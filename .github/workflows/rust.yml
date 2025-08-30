@@ -8,6 +8,9 @@ on:
   pull_request:
     branches: [ "main" ]
 
+env:
+  CRATE_NAME: tgcrypto
+
 jobs:
   build:
     strategy:
@@ -52,18 +55,16 @@ jobs:
           php-version: ${{ matrix.php-version }}
           coverage: none
           tools: composer, phpunit
-          extensions: mbstring, json # reduce noise, add any runtime libs you need
+          extensions: mbstring, json
 
-      - name: Install build dependencies (Linux)
-        if: startsWith(matrix.os, 'ubuntu')
+      - name: Install build deps (Linux)
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y build-essential pkg-config git curl unzip
-          # common libs that many php-ext-rs extensions need; add more if required
-          sudo apt-get install -y libssl-dev libsqlite3-dev
+          sudo apt-get install -y build-essential pkg-config git curl unzip libssl-dev libsqlite3-dev
 
-      - name: Install build dependencies (macOS)
-        if: matrix.os == 'macos-latest'
+      - name: Install build deps (macOS)
+        if: ${{ matrix.os == 'macos-latest' }}
         run: |
           brew update
           brew install pkg-config openssl cmake
@@ -71,63 +72,117 @@ jobs:
       - name: Ensure cargo bin in PATH
         run: echo "${HOME}/.cargo/bin" >> $GITHUB_PATH
 
-      # For cross targets (aarch64, armv7) use `cross` to produce target artifacts via Docker/QEMU
       - name: Install cross (for non-x86_64 linux cross builds)
-        if: startsWith(matrix.os, 'ubuntu') && matrix.arch != 'x86_64'
+        if: ${{ startsWith(matrix.os, 'ubuntu') && matrix.arch != 'x86_64' }}
         run: |
           cargo install cross || true
           cross --version || true
 
-      - name: Build (native or cross)
+      # Build step for Linux/macOS using bash (native x86_64 or mac)
+      - name: Build (native or cross) - bash path
+        if: ${{ matrix.os != 'windows-2022' }}
+        shell: bash
         env:
           RUSTFLAGS: "-C target-cpu=native"
         run: |
-          set -e
           echo "Target: ${{ matrix.target }}, OS: $RUNNER_OS, ARCH: ${{ matrix.arch }}"
-
-          if [[ "${{ matrix.os }}" == "windows-2022" ]]; then
-            # Build Windows MSVC target
-            cargo build --release --target ${{ matrix.target }}
-          elif [[ "${{ matrix.arch }}" == "x86_64" ]] && [[ "${{ matrix.os }}" != "ubuntu-latest" || "${{ matrix.os }}" == "ubuntu-latest" ]]; then
-            # Native x86_64 (linux or macos)
+          if [[ "${{ matrix.arch }}" == "x86_64" ]]; then
             cargo build --release
           else
-            # Use cross for other linux architectures (aarch64, armv7) on ubuntu runner
+            # use cross for non-x86_64 linux targets (cross was installed earlier)
             cross build --release --target ${{ matrix.target }}
           fi
 
-      - name: List built files
-        run: ls -la target/${{ matrix.target }}/release || ls -la target/release
+      # Build step for Windows using PowerShell
+      - name: Build (windows) - pwsh path
+        if: ${{ matrix.os == 'windows-2022' }}
+        shell: pwsh
+        run: |
+          Write-Host "Building for Windows target: $Env:MATRIX_TARGET"
+          # matrix variables are not automatically env vars; use the expression directly:
+          $target = "${{ matrix.target }}"
+          cargo build --release --target $target
 
-      - name: Copy artifact to a known place and show it
+      - name: List built files (Linux/mac)
+        if: ${{ matrix.os != 'windows-2022' }}
+        shell: bash
+        run: |
+          if [ -d "target/${{ matrix.target }}/release" ]; then
+            ls -la target/${{ matrix.target }}/release
+          else
+            ls -la target/release
+          fi
+
+      - name: List built files (Windows)
+        if: ${{ matrix.os == 'windows-2022' }}
+        shell: pwsh
+        run: |
+          $p = "target\${{ matrix.target }}\release"
+          if (Test-Path $p) { Get-ChildItem -Path $p -Force } else { Get-ChildItem -Path target\release -Force }
+
+      - name: Copy artifact to artifacts/...
+        if: ${{ matrix.os != 'windows-2022' }}
+        shell: bash
         run: |
           mkdir -p artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}
-          if [[ "${{ matrix.os }}" == "windows-2022" ]]; then
-            # windows MSVC usually produces a .dll
-            cp target/${{ matrix.target }}/release/${CRATE_NAME}.dll artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}/ 2>/dev/null || cp target/${{ matrix.target }}/release/lib${CRATE_NAME}.dll artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}/ || true
-          elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
-            cp target/${{ matrix.target }}/release/lib${CRATE_NAME}.dylib artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}/ || cp target/release/lib${CRATE_NAME}.dylib artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}/ || true
+          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            cp target/${{ matrix.target }}/release/lib${CRATE_NAME}.dylib artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}/ 2>/dev/null || cp target/release/lib${CRATE_NAME}.dylib artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}/ || true
           else
-            cp target/${{ matrix.target }}/release/lib${CRATE_NAME}.so artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}/ || cp target/release/lib${CRATE_NAME}.so artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}/ || true
+            cp target/${{ matrix.target }}/release/lib${CRATE_NAME}.so artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}/ 2>/dev/null || cp target/release/lib${CRATE_NAME}.so artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}/ || true
           fi
           ls -la artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}
 
-      - name: Minimal runtime test (attempt)
+      - name: Copy artifact to artifacts/... (Windows)
+        if: ${{ matrix.os == 'windows-2022' }}
+        shell: pwsh
+        run: |
+          $out = "artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $targetPath = "target\${{ matrix.target }}\release"
+          if (Test-Path (Join-Path $targetPath "${CRATE_NAME}.dll")) {
+            Copy-Item -Path (Join-Path $targetPath "${CRATE_NAME}.dll") -Destination $out -Force
+          } elseif (Test-Path (Join-Path $targetPath "lib${CRATE_NAME}.dll")) {
+            Copy-Item -Path (Join-Path $targetPath "lib${CRATE_NAME}.dll") -Destination $out -Force
+          } else {
+            Write-Host "No DLL found in $targetPath, checking target\release"
+            if (Test-Path "target\release\${CRATE_NAME}.dll") {
+              Copy-Item -Path "target\release\${CRATE_NAME}.dll" -Destination $out -Force
+            }
+          }
+          Get-ChildItem -Path $out -Force
+
+      - name: Minimal runtime test (Linux/mac)
+        if: ${{ matrix.os != 'windows-2022' }}
         shell: bash
         run: |
-          set -e || true
           echo "Attempting to run php and load extension file (best-effort)."
           ART=artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}
-          if [[ "${{ matrix.os }}" == "windows-2022" ]]; then
-            EXTFILE="$ART/${CRATE_NAME}.dll"
-            pwsh -c "php -d extension=\"$EXTFILE\" -r \"var_dump(extension_loaded('${CRATE_NAME}'))\""
-          elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
             EXTFILE="$ART/lib${CRATE_NAME}.dylib"
-            php -d extension="$EXTFILE" -r "var_dump(extension_loaded('${CRATE_NAME}'))"
           else
             EXTFILE="$ART/lib${CRATE_NAME}.so"
+          fi
+          if [ -f "$EXTFILE" ]; then
             php -d extension="$EXTFILE" -r "var_dump(extension_loaded('${CRATE_NAME}'))"
-          fi || echo "Extension load test failed or not supported on this runner/arch (expected for cross builds)."
+          else
+            echo "No extension file found for runtime test (expected for cross builds)."
+          fi || echo "Extension load test failed or not supported on this runner/arch."
+
+      - name: Minimal runtime test (Windows)
+        if: ${{ matrix.os == 'windows-2022' }}
+        shell: pwsh
+        run: |
+          Write-Host "Attempting to run php and load extension file (Windows best-effort)."
+          $art = "artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}"
+          $dll = Join-Path $art "${CRATE_NAME}.dll"
+          if (-not (Test-Path $dll)) {
+            $dll = Join-Path $art "lib${CRATE_NAME}.dll"
+          }
+          if (Test-Path $dll) {
+            php -d extension="$dll" -r "var_dump(extension_loaded('${CRATE_NAME}'))"
+          } else {
+            Write-Host "No DLL found for runtime test (possible cross/target mismatch)."
+          }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -161,7 +216,6 @@ jobs:
           for f in artifacts/*; do
             if [ -d "$f" ]; then
               base=$(basename "$f")
-              # zip everything inside that dir
               zip -r "release_assets/${base}.zip" "$f"
             fi
           done
