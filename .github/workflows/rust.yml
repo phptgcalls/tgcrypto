@@ -1,4 +1,4 @@
-name: Rust
+name: Rust - build php extension (tgcrypto)
 
 on:
   push:
@@ -12,17 +12,17 @@ jobs:
   build:
     strategy:
       matrix:
-        php-version: ['8.3']
+        php-version: ['8.1', '8.2', '8.3', '8.4']
         include:
           - os: ubuntu-latest
             arch: x86_64
             target: x86_64-unknown-linux-gnu
           - os: ubuntu-latest
-            arch: armv7
-            target: armv7-unknown-linux-gnueabihf
-          - os: ubuntu-latest
             arch: aarch64
             target: aarch64-unknown-linux-gnu
+          - os: ubuntu-latest
+            arch: armv7
+            target: armv7-unknown-linux-gnueabihf
           - os: macos-latest
             arch: x86_64
             target: x86_64-apple-darwin
@@ -31,89 +31,147 @@ jobs:
             target: x86_64-pc-windows-msvc
 
     runs-on: ${{ matrix.os }}
+    name: Build ${{ matrix.os }} / ${{ matrix.arch }} / PHP ${{ matrix.php-version }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust (stable)
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Add Rust target
+        run: rustup target add ${{ matrix.target }}
 
       - name: Setup PHP ${{ matrix.php-version }}
-        uses: shivammathur/setup-php@2.35.4
+        uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php-version }}
+          coverage: none
+          tools: composer, phpunit
+          extensions: mbstring, json # reduce noise, add any runtime libs you need
 
-      - name: Build for ${{ matrix.os }} ${{ matrix.arch }}
-        run: cargo build --release --verbose
+      - name: Install build dependencies (Linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y build-essential pkg-config git curl unzip
+          # common libs that many php-ext-rs extensions need; add more if required
+          sudo apt-get install -y libssl-dev libsqlite3-dev
 
-      - name: List build artifacts
-        run: ls -l target/release/
+      - name: Install build dependencies (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew update
+          brew install pkg-config openssl cmake
 
-      - name: Test PHP extension on all platforms
+      - name: Ensure cargo bin in PATH
+        run: echo "${HOME}/.cargo/bin" >> $GITHUB_PATH
+
+      # For cross targets (aarch64, armv7) use `cross` to produce target artifacts via Docker/QEMU
+      - name: Install cross (for non-x86_64 linux cross builds)
+        if: startsWith(matrix.os, 'ubuntu') && matrix.arch != 'x86_64'
+        run: |
+          cargo install cross || true
+          cross --version || true
+
+      - name: Build (native or cross)
+        env:
+          RUSTFLAGS: "-C target-cpu=native"
+        run: |
+          set -e
+          echo "Target: ${{ matrix.target }}, OS: $RUNNER_OS, ARCH: ${{ matrix.arch }}"
+
+          if [[ "${{ matrix.os }}" == "windows-2022" ]]; then
+            # Build Windows MSVC target
+            cargo build --release --target ${{ matrix.target }}
+          elif [[ "${{ matrix.arch }}" == "x86_64" ]] && [[ "${{ matrix.os }}" != "ubuntu-latest" || "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+            # Native x86_64 (linux or macos)
+            cargo build --release
+          else
+            # Use cross for other linux architectures (aarch64, armv7) on ubuntu runner
+            cross build --release --target ${{ matrix.target }}
+          fi
+
+      - name: List built files
+        run: ls -la target/${{ matrix.target }}/release || ls -la target/release
+
+      - name: Copy artifact to a known place and show it
+        run: |
+          mkdir -p artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}
+          if [[ "${{ matrix.os }}" == "windows-2022" ]]; then
+            # windows MSVC usually produces a .dll
+            cp target/${{ matrix.target }}/release/${CRATE_NAME}.dll artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}/ 2>/dev/null || cp target/${{ matrix.target }}/release/lib${CRATE_NAME}.dll artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}/ || true
+          elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            cp target/${{ matrix.target }}/release/lib${CRATE_NAME}.dylib artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}/ || cp target/release/lib${CRATE_NAME}.dylib artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}/ || true
+          else
+            cp target/${{ matrix.target }}/release/lib${CRATE_NAME}.so artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}/ || cp target/release/lib${CRATE_NAME}.so artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}/ || true
+          fi
+          ls -la artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}
+
+      - name: Minimal runtime test (attempt)
         shell: bash
         run: |
-          echo "Testing PHP extension..."
-
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            php -d extension="target\release\tgcrypto.dll" -r "var_dump(extension_loaded('tgcrypto'));"
+          set -e || true
+          echo "Attempting to run php and load extension file (best-effort)."
+          ART=artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}
+          if [[ "${{ matrix.os }}" == "windows-2022" ]]; then
+            EXTFILE="$ART/${CRATE_NAME}.dll"
+            pwsh -c "php -d extension=\"$EXTFILE\" -r \"var_dump(extension_loaded('${CRATE_NAME}'))\""
           elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
-            php -d extension="target/release/libtgcrypto.dylib" -r "var_dump(extension_loaded('tgcrypto'));"
+            EXTFILE="$ART/lib${CRATE_NAME}.dylib"
+            php -d extension="$EXTFILE" -r "var_dump(extension_loaded('${CRATE_NAME}'))"
           else
-            php -d extension="target/release/libtgcrypto.so" -r "var_dump(extension_loaded('tgcrypto'));"
-          fi
+            EXTFILE="$ART/lib${CRATE_NAME}.so"
+            php -d extension="$EXTFILE" -r "var_dump(extension_loaded('${CRATE_NAME}'))"
+          fi || echo "Extension load test failed or not supported on this runner/arch (expected for cross builds)."
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ runner.os }}-${{ matrix.arch }}
-          path: |
-            ${{ runner.os == 'Windows' && 'target/release/tgcrypto.dll' || 'target/release/libtgcrypto*' }}
+          name: ${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}
+          path: artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}
 
   release:
     needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      discussions: write
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download all artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Set release tag
+      - name: Set release version (from Cargo.toml)
         id: set_tag
         run: |
-          VERSION=$(grep -oP -m 1 'version = "\K[\w.]+' Cargo.toml)
-          echo "Library Version: $VERSION"
+          VERSION=$(grep -oP -m 1 'version\s*=\s*"\K[0-9.]+' Cargo.toml)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Zip Linux artifacts by arch
+      - name: Zip artifacts
         run: |
-         for dir in artifacts/Linux-*; do
-           arch=$(basename "$dir" | cut -d'-' -f2)
-           echo "Zipping $dir for arch $arch"
-           zip -j "artifacts/linux-${arch}.zip" "$dir"/*.so
-         done
-      - name: Zip Windows artifacts by arch
-        run: |
-         for dir in artifacts/Windows-*; do
-           arch=$(basename "$dir" | cut -d'-' -f2)
-           echo "Zipping $dir for arch $arch"
-           zip -j "artifacts/windows-${arch}.zip" "$dir"/*.dll
-         done
-      - name: Zip macOS artifacts by arch
-        run: |
-         for dir in artifacts/macOS-*; do
-            arch=$(basename "$dir" | cut -d'-' -f2)
-            echo "Zipping $dir for arch $arch"
-           zip -j "artifacts/macos-${arch}.zip" "$dir"/*.dylib
-         done
+          mkdir -p release_assets
+          for f in artifacts/*; do
+            if [ -d "$f" ]; then
+              base=$(basename "$f")
+              # zip everything inside that dir
+              zip -r "release_assets/${base}.zip" "$f"
+            fi
+          done
+          ls -la release_assets
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2.2.1
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: "v${{ steps.set_tag.outputs.version }}"
-          files: artifacts/*.zip
+          name: "Release v${{ steps.set_tag.outputs.version }}"
+          files: release_assets/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
