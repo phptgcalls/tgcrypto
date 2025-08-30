@@ -8,15 +8,11 @@ on:
   pull_request:
     branches: [ "main" ]
 
-env:
-  CARGO_TERM_COLOR: always
-  MACOSX_DEPLOYMENT_TARGET: "14.5"
-
 jobs:
   build:
     strategy:
       matrix:
-        php-version: ['8.4.5']
+        php-version: ['8.3']
         include:
           - os: ubuntu-latest
             arch: x86_64
@@ -30,7 +26,7 @@ jobs:
           - os: macos-latest
             arch: x86_64
             target: x86_64-apple-darwin
-          - os: windows-latest
+          - os: windows-2022
             arch: x86_64
             target: x86_64-pc-windows-msvc
 
