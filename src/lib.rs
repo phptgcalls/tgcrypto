@@ -4,10 +4,8 @@ use ext_php_rs::prelude::*;
 use ext_php_rs::binary::Binary;
 use std::collections::HashMap;
 
-// use aes::cipher::{KeyIvInit, StreamCipher, generic_array::GenericArray};
-
 #[php_const]
-pub const TGCRYPTO_VERSION: &str = "0.0.1";
+pub const TGCRYPTO_VERSION: &str = "0.0.2";
 
 #[php_function]
 pub fn tg_factorize(pq: u64) -> HashMap<&'static str, u64> {
@@ -96,3 +94,4 @@ impl ObfuscatedCipher {
 pub fn module(module: ModuleBuilder) -> ModuleBuilder {
     module
 }
+
