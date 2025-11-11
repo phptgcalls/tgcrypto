@@ -5,8 +5,8 @@ use ext_php_rs::binary::Binary;
 use std::collections::HashMap;
 
 #[php_const]
-pub const TGCRYPTO_VERSION: &str = "0.0.2";
-
+pub const TGCRYPTO_VERSION: &str = "0.0.3";
+/*
 #[php_function]
 pub fn tg_factorize(pq: u64) -> HashMap<&'static str, u64> {
     let (p,q) = grammers_crypto::factorize::factorize(pq);
@@ -51,7 +51,7 @@ pub fn tg_decrypt_ige(cipher: Binary<u8>, key: Binary<u8>, iv: Binary<u8>) -> Re
 
     Ok(grammers_crypto::hex::to_hex(&plain))
 }
-
+*/
 /*
 #[php_class(name = "ObfuscatedCipher")]
 pub struct ObfuscatedCipher {
@@ -94,4 +94,3 @@ impl ObfuscatedCipher {
 pub fn module(module: ModuleBuilder) -> ModuleBuilder {
     module
 }
-
