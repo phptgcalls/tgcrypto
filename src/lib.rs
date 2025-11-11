@@ -89,8 +89,15 @@ impl ObfuscatedCipher {
     }
 }
 */
+/*
+#[php_module]
+pub fn module(module: ModuleBuilder) -> ModuleBuilder {
+    module
+}
+*/
 
 #[php_module]
 pub fn module(module: ModuleBuilder) -> ModuleBuilder {
     module
+        .constant(wrap_constant!(TGCRYPTO_VERSION))
 }
