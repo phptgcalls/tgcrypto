@@ -17,7 +17,7 @@ pub fn tg_factorize(pq: u64) -> HashMap<&'static str, u64> {
 }
 
 #[php_function]
-pub fn tg_encrypt_ige(plain: String, key: Binary<u8>, iv: Binary<u8>) -> Result<String, String> {
+pub fn tg_encrypt_ige(plain: Binary<u8>, key: Binary<u8>, iv: Binary<u8>) -> Result<String, String> {
     let plain_bytes = plain.as_bytes();
 
     let key_bytes = key.as_ref();
@@ -104,3 +104,4 @@ pub fn module(module: ModuleBuilder) -> ModuleBuilder {
         .function(wrap_function!(tg_encrypt_ige))
         .function(wrap_function!(tg_decrypt_ige))
 }
+
