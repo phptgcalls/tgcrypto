@@ -17,7 +17,7 @@ pub fn tg_factorize(pq: u64) -> HashMap<&'static str, u64> {
 }
 
 #[php_function]
-pub fn tg_encrypt_ige(plain: Binary<u8>, key: Binary<u8>, iv: Binary<u8>) -> Result<String, String> {
+pub fn tg_encrypt_ige(plain: Binary<u8>, key: Binary<u8>, iv: Binary<u8>) -> Result<Binary<u8>, String> {
     let plain_bytes = plain.as_ref();
 
     let key_bytes = key.as_ref();
@@ -31,11 +31,12 @@ pub fn tg_encrypt_ige(plain: Binary<u8>, key: Binary<u8>, iv: Binary<u8>) -> Res
 
     let cipher = grammers_crypto::encrypt_ige(plain_bytes, &key_array, &iv_array);
 
-    Ok(grammers_crypto::hex::to_hex(&cipher))
+    // Ok(grammers_crypto::hex::to_hex(&cipher))
+    Ok(Binary::from(cipher))
 }
 
 #[php_function]
-pub fn tg_decrypt_ige(cipher: Binary<u8>, key: Binary<u8>, iv: Binary<u8>) -> Result<String, String> {
+pub fn tg_decrypt_ige(cipher: Binary<u8>, key: Binary<u8>, iv: Binary<u8>) -> Result<Binary<u8>, String> {
     let cipher_bytes = cipher.as_ref();
 
     let key_bytes = key.as_ref();
@@ -49,7 +50,8 @@ pub fn tg_decrypt_ige(cipher: Binary<u8>, key: Binary<u8>, iv: Binary<u8>) -> Re
 
     let plain = grammers_crypto::decrypt_ige(cipher_bytes, &key_array, &iv_array);
 
-    Ok(grammers_crypto::hex::to_hex(&plain))
+    // Ok(grammers_crypto::hex::to_hex(&plain))
+    Ok(Binary::from(plain))
 }
 
 /*
@@ -104,5 +106,6 @@ pub fn module(module: ModuleBuilder) -> ModuleBuilder {
         .function(wrap_function!(tg_encrypt_ige))
         .function(wrap_function!(tg_decrypt_ige))
 }
+
 
 
