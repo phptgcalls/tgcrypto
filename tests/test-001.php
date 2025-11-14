@@ -2,14 +2,14 @@
 
 declare(strict_types = 1);
 
-$text = str_repeat('A',128);
+$text = str_repeat('A',1024 * 1024);
 
 $key = base64_decode('TlNS2AEJLK+QIklSAfFEL4guWXEqbw3f/QmlHhGOu6M=');
 $iv = base64_decode('Eow6GVp/66zvfGsrmQu2ZOp6W2I8Bl7FqLGBSzJfXrM=');
 
 $start = microtime(true);
 
-for($i = 0;$i < 1000;$i++){
+for($i = 0;$i < 100;$i++){
 	$padding = strlen($text) % 16 ? 0x10 - strlen($text) % 0x10 : 0;
 	$text = str_pad($text,strlen($text) + $padding,chr(0),STR_PAD_RIGHT);
 
@@ -26,3 +26,4 @@ echo 'It took ',$finish - $start,' seconds',PHP_EOL;
 
 
 ?>
+
