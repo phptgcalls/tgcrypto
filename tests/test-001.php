@@ -22,8 +22,6 @@ for($i = 0;$i < 100;$i++){
 
 $finish = microtime(true);
 
-echo 'It took ',$finish - $start,' seconds',PHP_EOL;
-
+echo 'It took ' , $finish - $start , ' seconds' , PHP_EOL;
 
 ?>
-
