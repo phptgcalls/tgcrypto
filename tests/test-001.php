@@ -4,8 +4,8 @@ declare(strict_types = 1);
 
 $text = str_repeat('A',1024 * 1024);
 
-$key = base64_decode('TlNS2AEJLK+QIklSAfFEL4guWXEqbw3f/QmlHhGOu6M=');
-$iv = base64_decode('Eow6GVp/66zvfGsrmQu2ZOp6W2I8Bl7FqLGBSzJfXrM=');
+$key = random_bytes(32);
+$iv = random_bytes(32);
 
 $start = microtime(true);
 
@@ -22,4 +22,3 @@ $finish = microtime(true);
 echo 'It took ' , $finish - $start , ' seconds' , PHP_EOL;
 
 ?>
-
