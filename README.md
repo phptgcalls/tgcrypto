@@ -6,7 +6,7 @@ A PHP extension for cryptographic functions using Rust
 The easiest way to install and configure extension
 
 ```shell
-git clone https://github.com/Tak-Pesar/tgcrypto && cd tgcrypto && sudo bash install.sh
+git clone https://github.com/TakNone/tgcrypto && cd tgcrypto && sudo bash install.sh
 ```
 
 ## Testing
