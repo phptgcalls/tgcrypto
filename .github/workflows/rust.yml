@@ -63,14 +63,20 @@ jobs:
           $env:PATH += ";C:\Program Files\LLVM\bin"
           Get-Command lld-link.exe
 
-      - name: Force Rust to use rust-lld instead of system lld-link
+      - name: Force Rust to use rust-lld (Windows only)
+        if: ${{ matrix.os == 'windows-2022' }}
         shell: pwsh
         run: |
+          $root = (Get-Location).Path
           $sysroot = (& rustc --print sysroot).Trim()
           $rust_lld = Join-Path $sysroot "lib\rustlib\x86_64-pc-windows-msvc\bin\rust-lld.exe"
 
-          mkdir .cargo -ea 0
-          @"[target.x86_64-pc-windows-msvc]\nlinker = "$rust_lld""@ | Out-File .cargo\config.toml -Encoding ascii
+          mkdir "$root\.cargo" -ErrorAction SilentlyContinue
+
+          @"
+[target.x86_64-pc-windows-msvc]
+linker = "$rust_lld"
+"@ | Out-File "$root\.cargo\config.toml" -Encoding ascii
 
           Write-Host "Using rust-lld: $rust_lld"
           Get-Content "$root\.cargo\config.toml"
