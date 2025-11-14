@@ -15,7 +15,7 @@ jobs:
   build:
     strategy:
       matrix:
-        php-version: ['8.1', '8.2', '8.3', '8.4']
+        php-version: ['8.2', '8.3', '8.4']
         include:
           - os: ubuntu-latest
             arch: x86_64
@@ -39,12 +39,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Rust (stable)
+      - name: Setup Rust ( stable )
+        if: ${{ matrix.os != 'windows-2022' }}
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
           override: true
+
+      - name: Setup Rust ( nightly ) ( Windows only )
+        if: ${{ matrix.os == 'windows-2022' }}
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+          
+      - name: Install LLVM ( lld ) on Windows
+        if: ${{ matrix.os == 'windows-2022' }}
+        shell: pwsh
+        run: |
+          choco install -y llvm
+          $env:PATH += ";C:\Program Files\LLVM\bin"
+          Get-Command lld-link.exe
 
       - name: Add Rust target
         run: rustup target add ${{ matrix.target }}
@@ -57,13 +74,13 @@ jobs:
           tools: composer, phpunit
           extensions: mbstring, json
 
-      - name: Install build deps (Linux)
+      - name: Install build deps ( Linux )
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
           sudo apt-get update -y
           sudo apt-get install -y build-essential pkg-config git curl unzip libssl-dev libsqlite3-dev
 
-      - name: Install build deps (macOS)
+      - name: Install build deps ( macOS )
         if: ${{ matrix.os == 'macos-latest' }}
         run: |
           brew update
@@ -72,14 +89,13 @@ jobs:
       - name: Ensure cargo bin in PATH
         run: echo "${HOME}/.cargo/bin" >> $GITHUB_PATH
 
-      - name: Install cross (for non-x86_64 linux cross builds)
+      - name: Install cross ( for non-x86_64 linux cross builds )
         if: ${{ startsWith(matrix.os, 'ubuntu') && matrix.arch != 'x86_64' }}
         run: |
           cargo install cross || true
           cross --version || true
 
-      # Build step for Linux/macOS using bash (native x86_64 or mac)
-      - name: Build (native or cross) - bash path
+      - name: Build ( native or cross ) - bash path
         if: ${{ matrix.os != 'windows-2022' }}
         shell: bash
         env:
@@ -93,17 +109,15 @@ jobs:
             cross build --release --target ${{ matrix.target }}
           fi
 
-      # Build step for Windows using PowerShell
-      - name: Build (windows) - pwsh path
+      - name: Build ( windows ) - pwsh path
         if: ${{ matrix.os == 'windows-2022' }}
         shell: pwsh
         run: |
-          Write-Host "Building for Windows target: $Env:MATRIX_TARGET"
-          # matrix variables are not automatically env vars; use the expression directly:
+          Write-Host "Building for Windows target : $Env:MATRIX_TARGET"
           $target = "${{ matrix.target }}"
           cargo build --release --target $target
 
-      - name: List built files (Linux/mac)
+      - name: List built files ( Linux / mac )
         if: ${{ matrix.os != 'windows-2022' }}
         shell: bash
         run: |
@@ -113,7 +127,7 @@ jobs:
             ls -la target/release
           fi
 
-      - name: List built files (Windows)
+      - name: List built files ( Windows )
         if: ${{ matrix.os == 'windows-2022' }}
         shell: pwsh
         run: |
@@ -132,7 +146,7 @@ jobs:
           fi
           ls -la artifacts/${{ matrix.os }}-${{ matrix.arch }}-php${{ matrix.php-version }}
 
-      - name: Copy artifact to artifacts/... (Windows)
+      - name: Copy artifact to artifacts/... ( Windows )
         if: ${{ matrix.os == 'windows-2022' }}
         shell: pwsh
         run: |
@@ -151,7 +165,7 @@ jobs:
           }
           Get-ChildItem -Path $out -Force
 
-      - name: Minimal runtime test (Linux/mac)
+      - name: Minimal runtime test ( Linux / mac )
         if: ${{ matrix.os != 'windows-2022' }}
         shell: bash
         run: |
@@ -168,7 +182,7 @@ jobs:
             echo "No extension file found for runtime test (expected for cross builds)."
           fi || echo "Extension load test failed or not supported on this runner/arch."
 
-      - name: Minimal runtime test (Windows)
+      - name: Minimal runtime test ( Windows )
         if: ${{ matrix.os == 'windows-2022' }}
         shell: pwsh
         run: |
