@@ -71,15 +71,20 @@ jobs:
           $sysroot = (& rustc --print sysroot).Trim()
           $rust_lld = Join-Path $sysroot "lib\rustlib\x86_64-pc-windows-msvc\bin\rust-lld.exe"
 
-          mkdir "$root\.cargo" -ErrorAction SilentlyContinue
+          if (!(Test-Path "$root\.cargo")) {
+            New-Item -ItemType Directory "$root\.cargo" | Out-Null
+          }
 
-          @"
+          $content = @"
 [target.x86_64-pc-windows-msvc]
 linker = "$rust_lld"
-"@ | Out-File "$root\.cargo\config.toml" -Encoding ascii
+"@
+
+          $content | Out-File "$root\.cargo\config.toml" -Encoding ascii
 
           Write-Host "Using rust-lld: $rust_lld"
           Get-Content "$root\.cargo\config.toml"
+
 
       - name: Verify linker
         if: ${{ matrix.os == 'windows-2022' }}
