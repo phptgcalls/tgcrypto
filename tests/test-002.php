@@ -15,4 +15,3 @@ $finish = microtime(true);
 echo 'It took ' , $finish - $start , ' seconds' , PHP_EOL;
 
 ?>
-
