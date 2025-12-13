@@ -1,5 +1,6 @@
 [target.x86_64-pc-windows-msvc]
-linker = "rust-lld"
+linker = "link.exe"
+rustflags = ["-C", "link-arg=-fuse-ld=link.exe"]
 
 [target.aarch64-apple-darwin]
 rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]
