@@ -30,9 +30,9 @@ jobs:
           - os: macos-latest
             arch: x86_64
             target: x86_64-apple-darwin
-          - os: windows-latest
-            arch: x86_64
-            target: x86_64-pc-windows-msvc
+          # - os: windows-latest
+          #  arch: x86_64
+          #  target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout code
@@ -98,13 +98,13 @@ jobs:
            echo "Zipping $dir for arch $arch"
            zip -j "artifacts/linux-${arch}.zip" "$dir"/*.so
          done
-      - name: Zip Windows artifacts by arch
-        run: |
-         for dir in artifacts/Windows-*; do
-           arch=$(basename "$dir" | cut -d'-' -f2)
-           echo "Zipping $dir for arch $arch"
-           zip -j "artifacts/windows-${arch}.zip" "$dir"/*.dll
-         done
+      # - name: Zip Windows artifacts by arch
+      #  run: |
+      #   for dir in artifacts/Windows-*; do
+      #     arch=$(basename "$dir" | cut -d'-' -f2)
+      #     echo "Zipping $dir for arch $arch"
+      #     zip -j "artifacts/windows-${arch}.zip" "$dir"/*.dll
+      #   done
       - name: Zip macOS artifacts by arch
         run: |
          for dir in artifacts/macOS-*; do
