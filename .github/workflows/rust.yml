@@ -1,0 +1,122 @@
+name: Rust
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+  MACOSX_DEPLOYMENT_TARGET: "14.5"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        php-version: ['8.0', '8.1', '8.2', '8.3', '8.4']
+        include:
+          - os: ubuntu-latest
+            arch: x86_64
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            arch: armv7
+            target: armv7-unknown-linux-gnueabihf
+          - os: ubuntu-latest
+            arch: aarch64
+            target: aarch64-unknown-linux-gnu
+          - os: macos-latest
+            arch: x86_64
+            target: x86_64-apple-darwin
+          - os: windows-latest
+            arch: x86_64
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup PHP ${{ matrix.php-version }}
+        uses: shivammathur/setup-php@2.32.0
+        with:
+          php-version: ${{ matrix.php-version }}
+
+      - name: Build for ${{ matrix.os }} ${{ matrix.arch }}
+        run: cargo build --release
+
+      - name: List build artifacts
+        run: ls -l target/release/
+
+      - name: Test PHP extension on all platforms
+        shell: bash
+        run: |
+          echo "Testing PHP extension..."
+
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            php -d extension="target\release\tgcrypto.dll" -r "var_dump(extension_loaded('tgcrypto'));"
+          elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            php -d extension="target/release/libtgcrypto.dylib" -r "var_dump(extension_loaded('tgcrypto'));"
+          else
+            php -d extension="target/release/libtgcrypto.so" -r "var_dump(extension_loaded('tgcrypto'));"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ runner.os }}-${{ matrix.arch }}
+          path: |
+            ${{ runner.os == 'Windows' && 'target/release/tgcrypto.dll' || 'target/release/libtgcrypto*' }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      discussions: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Set release tag
+        id: set_tag
+        run: |
+          VERSION=$(grep -oP -m 1 'version = "\K[\w.]+' Cargo.toml)
+          echo "Library Version: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Zip Linux artifacts by arch
+        run: |
+         for dir in artifacts/Linux-*; do
+           arch=$(basename "$dir" | cut -d'-' -f2)
+           echo "Zipping $dir for arch $arch"
+           zip -j "artifacts/linux-${arch}.zip" "$dir"/*.so
+         done
+      - name: Zip Windows artifacts by arch
+        run: |
+         for dir in artifacts/Windows-*; do
+           arch=$(basename "$dir" | cut -d'-' -f2)
+           echo "Zipping $dir for arch $arch"
+           zip -j "artifacts/windows-${arch}.zip" "$dir"/*.dll
+         done
+      - name: Zip macOS artifacts by arch
+        run: |
+         for dir in artifacts/macOS-*; do
+            arch=$(basename "$dir" | cut -d'-' -f2)
+            echo "Zipping $dir for arch $arch"
+           zip -j "artifacts/macos-${arch}.zip" "$dir"/*.dylib
+         done
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2.2.1
+        with:
+          tag_name: "v${{ steps.set_tag.outputs.version }}"
+          files: artifacts/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
